@@ -111,25 +111,28 @@ def static_fused_moe(hidden_states, w1, w2, score, topk):
                                                    dim=-1)
     routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
     routing_weights = routing_weights.to(hidden_states.dtype)
-    final_hidden_states = torch.zeros((1, B, D),
-                                      dtype=hidden_states.dtype,
-                                      device=hidden_states.device)
-    padded_weights = torch.zeros((B, num_experts),
-                                 dtype=hidden_states.dtype,
-                                 device=hidden_states.device)
-    padded_weights.scatter_(-1, selected_experts, routing_weights)
-    padded_weights = padded_weights.reshape(-1, B, w1.shape[0])
-    padded_weights = padded_weights.permute(2, 0, 1).unsqueeze(-1)
+
+    d = w1.shape[1] // 2
+    # pre-processing for custom op inputs
+    w1_transposed = torch.permute(w1, (0, 2, 1))
+    w2_transposed = torch.permute(w2, (0, 2, 1))
+    w11_list = [w1_transposed[i,:,:d].squeeze() for i in range(num_experts)]
+    w12_list = [w1_transposed[i,:,d:].squeeze() for i in range(num_experts)]
+    w2_list = [w2_transposed[i,:,:].squeeze() for i in range(num_experts)]
 
     htorch.core.mark_step()
 
-    for expert_idx in range(num_experts):
-        w_output = torch.matmul(hidden_states, w1[expert_idx].transpose(0, 1))
-        w_output = silu_and_mul(w_output)
-        w_output = torch.matmul(w_output, w2[expert_idx].transpose(0, 1))
-        final_hidden_states += w_output * padded_weights[expert_idx]
-        htorch.core.mark_step()
-
+    final_hidden_states = torch.ops.hpu.mixture_of_experts(
+            input=hidden_states,
+            expert_routing_table=selected_experts,
+            router_weights=routing_weights,
+            expert_weights_1=w11_list,
+            expert_weights_2=w12_list,
+            expert_weights_3=w2_list,
+            activation="silu",
+            experts_min=0,
+            experts_max=7
+    )
     return final_hidden_states.view(-1, D)
 
 
