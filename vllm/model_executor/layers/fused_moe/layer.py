@@ -203,7 +203,10 @@ class FusedMoE(torch.nn.Module):
         self.topk_group = topk_group
         if is_hpu():
             from vllm.hpu.ops import StaticFusedMOE
-            self.hpu_static_fused_moe = StaticFusedMOE(self.num_experts)
+            from vllm.model_executor.layers.quantization.inc import INCConfig
+            self.hpu_static_fused_moe = StaticFusedMOE(
+                self.num_experts,
+                isinstance(quant_config, INCConfig))
 
         if quant_config is None:
             self.quant_method: Optional[QuantizeMethodBase] = (
