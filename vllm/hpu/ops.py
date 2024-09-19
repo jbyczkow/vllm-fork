@@ -274,6 +274,7 @@ class StaticFusedMOE(torch.nn.Module):
         routing_weights = routing_weights.to(hidden_states.dtype)
 
         if self.using_inc_quantization:
+            print("using_inc_quantization - fp8 path")
             final_hidden_states = torch.zeros((1, B, D),
                                             dtype=hidden_states.dtype,
                                             device=hidden_states.device)
@@ -296,6 +297,7 @@ class StaticFusedMOE(torch.nn.Module):
                 current_hidden_states_static = w_output * padded_weight
                 final_hidden_states += current_hidden_states_static
         else:
+            print("custom_moe - bf16 path")
             # pre-processing for custom op inputs
             experts_range = range(self.num_total_experts)
             w1_list = [w1[i,:,:].squeeze() for i in experts_range]
