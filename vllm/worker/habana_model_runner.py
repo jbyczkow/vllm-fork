@@ -1373,8 +1373,10 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         if is_pt_profiler_run and self.is_driver_worker:
             profiler = setup_profiler()
             profiler.start()
+        logger.warning(f"[_DEBUG_]  self.execute_model {times=}")
         for _ in range(times):
             inputs = self.prepare_model_input(seqs)
+            logger.warning("[_DEBUG_]  self.execute_model")
             self.execute_model(inputs, kv_caches, warmup_mode=True)
             torch.hpu.synchronize()
             if profiler:
@@ -1428,6 +1430,7 @@ class HabanaModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         logger.info(msg)
 
     def warmup_all_buckets(self, buckets, is_prompt, kv_caches):
+        logger.warning("[_DEBUG_] warmup_all_buckets")
         for i, (batch_size, seq_len) in enumerate(reversed(buckets)):
             self.log_warmup('Prompt' if is_prompt else 'Decode', i,
                             len(buckets), batch_size, seq_len)
@@ -1806,6 +1809,14 @@ class HabanaModelRunner(
     def _check_config(self, batch_size, seq_len, is_prompt, warmup_mode):
         cfg = (batch_size, seq_len, is_prompt)
         seen = cfg in self.seen_configs
+        if not seen or warmup_mode:
+            logger.warning("Additional fail data (%s %s): %s %s %s %s",
+                            str(warmup_mode),
+                            str(seen),
+                            hex(id(self)),
+                            hex(id(self.seen_configs)),
+                            str(cfg),
+                            str(self.seen_configs))
         self.seen_configs.add(cfg)
         if not seen and not warmup_mode:
             phase = 'prompt' if is_prompt else 'decode'
@@ -1846,6 +1857,8 @@ class HabanaModelRunner(
         batch_size = input_tokens.size(0)
         seq_len = self._seq_len(attn_metadata)
         use_graphs = self._use_graphs(batch_size, seq_len, is_prompt)
+        if warmup_mode:
+            logger.warning("[_DEBUG_] self._check_config")
         self._check_config(batch_size, seq_len, is_prompt, warmup_mode)
         execute_model_kwargs = {
             "input_ids": input_tokens,
